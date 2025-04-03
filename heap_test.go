@@ -334,6 +334,37 @@ func TestRemove2(t *testing.T) {
 	}
 }
 
+func TestRemove3(t *testing.T) {
+	rng := newTestRand(t)
+	N := 200
+
+	h := new(myHeap)
+	for i := 0; i < N; i++ {
+		Push(h, i)
+	}
+	h.verify(t, 0)
+
+	// remove all in random order
+	removed := make(map[int]struct{})
+	for h.Len() > 0 {
+		i := rng.Intn(h.Len())
+		x := Remove(h, i).(int)
+		h.verify(t, 0)
+		removed[x] = struct{}{}
+	}
+
+	// make sure all were removed
+	for i := 0; i < N; i++ {
+		if _, ok := removed[i]; !ok {
+			t.Errorf("value %d was never removed", i)
+		}
+		delete(removed, i)
+	}
+	for k := range removed {
+		t.Errorf("value %d was removed but never added", k)
+	}
+}
+
 func BenchmarkDup(b *testing.B) {
 	const n = 10000
 	h := make(myHeap, 0, n)
