@@ -3,7 +3,7 @@ package minmaxheap_test
 import (
 	"fmt"
 
-	heap "github.com/esote/minmaxheap"
+	heap "storj.io/minmaxheap"
 )
 
 // IntHeap is a min-heap of ints.

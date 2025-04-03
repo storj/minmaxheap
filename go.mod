@@ -1,3 +1,3 @@
-module github.com/esote/minmaxheap
+module storj.io/minmaxheap
 
 go 1.16
