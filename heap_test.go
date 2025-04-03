@@ -1,10 +1,51 @@
 package minmaxheap
 
 import (
+	"crypto/sha256"
+	"encoding/binary"
+	"flag"
 	"math/rand"
+	"os"
 	"sort"
+	"sync"
 	"testing"
+	"time"
 )
+
+var (
+	seed       int64
+	globalRand *rand.Rand
+	randMu     sync.Mutex
+)
+
+func init() {
+	flag.Int64Var(&seed, "seed", 0, "Random seed (default is current time)")
+}
+
+func TestMain(m *testing.M) {
+	flag.Parse()
+
+	randMu.Lock()
+	if seed == 0 {
+		seed = time.Now().UnixNano()
+	}
+	globalRand = rand.New(rand.NewSource(seed)) // seeded once for all test-local RNGs
+	randMu.Unlock()
+
+	os.Exit(m.Run())
+}
+
+// newTestRand creates a deterministic *rand.Rand for the given test based on the test name.
+func newTestRand(t *testing.T) *rand.Rand {
+	randMu.Lock()
+	defer randMu.Unlock()
+
+	t.Logf("using global seed %d", seed)
+	h := sha256.Sum256([]byte(t.Name()))
+	namePart := int64(binary.BigEndian.Uint64(h[:8]))
+	nameSeed := seed ^ namePart // xor to combine them
+	return rand.New(rand.NewSource(nameSeed))
+}
 
 type myHeap []int
 
@@ -191,12 +232,12 @@ func TestMax(t *testing.T) {
 }
 
 func TestRandomSorted(t *testing.T) {
-	rand.Seed(0)
+	rng := newTestRand(t)
 
 	const n = 1_000
 	h := new(myHeap)
 	for i := 0; i < n; i++ {
-		*h = append(*h, rand.Intn(n/2))
+		*h = append(*h, rng.Intn(n/2))
 	}
 
 	Init(h)
@@ -213,12 +254,12 @@ func TestRandomSorted(t *testing.T) {
 }
 
 func TestRandomSortedMax(t *testing.T) {
-	rand.Seed(0)
+	rng := newTestRand(t)
 
 	const n = 1_000
 	h := new(myHeap)
 	for i := 0; i < n; i++ {
-		*h = append(*h, rand.Intn(n/2))
+		*h = append(*h, rng.Intn(n/2))
 	}
 
 	Init(h)
@@ -233,6 +274,7 @@ func TestRandomSortedMax(t *testing.T) {
 		t.Fatal("max pop order invalid")
 	}
 }
+
 func TestRemove0(t *testing.T) {
 	h := new(myHeap)
 	for i := 0; i < 10; i++ {
@@ -307,7 +349,7 @@ func BenchmarkDup(b *testing.B) {
 }
 
 func TestFix(t *testing.T) {
-	rand.Seed(0)
+	rng := newTestRand(t)
 
 	h := new(myHeap)
 	h.verify(t, 0)
@@ -325,7 +367,7 @@ func TestFix(t *testing.T) {
 	h.verify(t, 0)
 
 	for i := 100; i > 0; i-- {
-		elem := rand.Intn(h.Len())
+		elem := rng.Intn(h.Len())
 		if i&1 == 0 {
 			(*h)[elem] *= 2
 		} else {
