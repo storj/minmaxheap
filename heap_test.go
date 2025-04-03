@@ -4,9 +4,12 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"flag"
+	"fmt"
 	"math/rand"
 	"os"
+	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -98,6 +101,213 @@ func (h myHeap) verify(t *testing.T, i int) {
 		}
 		h.verify(t, r)
 	}
+}
+
+func (h myHeap) Format(t *testing.T, highlight int) (filename string) {
+	if h.Len() == 0 {
+		return "<no image; empty heap>"
+	}
+
+	// Generate SVG representation of the heap
+	svgContent := h.FormatSVG(highlight)
+
+	// Create the output directory if it doesn't exist
+	outputDir := "heap_visualizations"
+	if err := os.MkdirAll(outputDir, 0755); err != nil {
+		t.Errorf("Error creating output directory: %v", err)
+		return
+	}
+
+	// Write SVG to a file in the output directory
+	timestamp := time.Now().Format("20060102_150405.000000")
+	filename = filepath.Join(outputDir, fmt.Sprintf("%s_nodes%d_highlight%d_%s.svg",
+		t.Name(), h.Len(), highlight, timestamp))
+
+	if err := os.WriteFile(filename, []byte(svgContent), 0644); err != nil {
+		t.Errorf("Error writing SVG file: %v", err)
+		return
+	}
+
+	return filename
+}
+
+// FormatSVG generates an SVG representation of the heap tree
+func (h myHeap) FormatSVG(highlight int) string {
+	// Determine SVG parameters based on heap size
+	var nodeDiameter, levelHeight, leftMargin, topMargin int
+
+	// Adjust parameters based on heap size
+	if h.Len() <= 31 { // Small heap (5 levels or fewer)
+		nodeDiameter = 40
+		levelHeight = 80
+		leftMargin = 10
+		topMargin = 20
+	} else if h.Len() <= 127 { // Medium heap (6-7 levels)
+		nodeDiameter = 30
+		levelHeight = 60
+		leftMargin = 10
+		topMargin = 20
+	} else { // Large heap (8+ levels)
+		nodeDiameter = 24
+		levelHeight = 50
+		leftMargin = 10
+		topMargin = 20
+	}
+
+	// Calculate the total width needed for the tree
+	levels := level(h.Len())
+
+	// For very large heaps, limit the width by not showing all levels
+	maxLevelsToShow := levels
+	if levels > 7 {
+		maxLevelsToShow = 7 // Only show top 7 levels for very large heaps
+	}
+
+	maxNodesInLevel := 1 << maxLevelsToShow // Maximum nodes in the last level we'll show
+	totalWidth := maxNodesInLevel*(nodeDiameter*2) + leftMargin*2
+	totalHeight := (maxLevelsToShow+1)*levelHeight + topMargin*2
+
+	// Start the SVG
+	var buf strings.Builder
+	buf.WriteString(fmt.Sprintf("<svg width=\"%d\" height=\"%d\" xmlns=\"http://www.w3.org/2000/svg\">\n",
+		totalWidth, totalHeight))
+
+	// Add a title
+	buf.WriteString(fmt.Sprintf("  <title>MinMaxHeap Visualization (%d nodes)</title>\n", h.Len()))
+
+	// Style definitions
+	buf.WriteString(`  <style>
+    .node-min { fill: lightblue; stroke: #333; stroke-width: 2; }
+    .node-max { fill: lightpink; stroke: #333; stroke-width: 2; }
+    .node-highlight { stroke: red; stroke-width: 3; }
+    .node-text { font-family: Arial; font-size: 14px; text-anchor: middle; dominant-baseline: middle; }
+    .node-index { font-family: Arial; font-size: 10px; text-anchor: middle; fill: #666; }
+    .edge { stroke: #666; stroke-width: 1.5; fill: none; }
+    .legend { font-family: Arial; font-size: 12px; }
+  </style>
+`)
+
+	// Add a legend
+	buf.WriteString(`  <!-- Legend -->
+  <rect x="10" y="10" width="15" height="15" class="node-min" />
+  <text x="30" y="22" class="legend">Min Level</text>
+  <rect x="100" y="10" width="15" height="15" class="node-max" />
+  <text x="120" y="22" class="legend">Max Level</text>
+`)
+
+	// Calculate positions for each node
+	nodesCount := h.Len()
+	if maxLevelsToShow < levels {
+		// Calculate how many nodes we're showing if we limited levels
+		nodesCount = (1 << (maxLevelsToShow + 1)) - 1
+		if nodesCount > h.Len() {
+			nodesCount = h.Len()
+		}
+	}
+
+	nodePositions := make([]struct{ x, y int }, nodesCount)
+	for i := 0; i < nodesCount; i++ {
+		lev := level(i)
+		if lev > maxLevelsToShow {
+			continue // Skip nodes beyond our display level
+		}
+
+		nodesInLevel := 1 << lev
+
+		// Calculate width of this level
+		levelWidth := totalWidth - (leftMargin * 2)
+
+		// Calculate position in this level (0-based)
+		posInLevel := i - ((1 << lev) - 1)
+
+		// Calculate x position (centered in its segment)
+		segmentWidth := levelWidth / nodesInLevel
+		x := leftMargin + (posInLevel * segmentWidth) + (segmentWidth / 2)
+
+		// Calculate y position
+		y := topMargin + (lev * levelHeight) + (nodeDiameter / 2)
+
+		nodePositions[i] = struct{ x, y int }{x, y}
+	}
+
+	// Draw edges first (so they'll be behind nodes)
+	buf.WriteString("  <!-- Edges connecting nodes -->\n")
+	for i := 0; i < nodesCount; i++ {
+		lev := level(i)
+		if lev >= maxLevelsToShow {
+			continue // Skip drawing edges from nodes in the last level
+		}
+
+		leftChild := 2*i + 1
+		rightChild := 2*i + 2
+
+		if leftChild < nodesCount {
+			buf.WriteString(fmt.Sprintf("  <path class=\"edge\" d=\"M%d,%d C%d,%d %d,%d %d,%d\" />\n",
+				nodePositions[i].x, nodePositions[i].y+(nodeDiameter/2),
+				nodePositions[i].x, nodePositions[i].y+levelHeight/3,
+				nodePositions[leftChild].x, nodePositions[leftChild].y-levelHeight/3,
+				nodePositions[leftChild].x, nodePositions[leftChild].y-(nodeDiameter/2)))
+		}
+
+		if rightChild < nodesCount {
+			buf.WriteString(fmt.Sprintf("  <path class=\"edge\" d=\"M%d,%d C%d,%d %d,%d %d,%d\" />\n",
+				nodePositions[i].x, nodePositions[i].y+(nodeDiameter/2),
+				nodePositions[i].x, nodePositions[i].y+levelHeight/3,
+				nodePositions[rightChild].x, nodePositions[rightChild].y-levelHeight/3,
+				nodePositions[rightChild].x, nodePositions[rightChild].y-(nodeDiameter/2)))
+		}
+	}
+
+	// Draw all nodes
+	buf.WriteString("  <!-- Nodes -->\n")
+	for i := 0; i < nodesCount; i++ {
+		lev := level(i)
+		if lev > maxLevelsToShow {
+			continue // Skip nodes beyond our display level
+		}
+
+		x := nodePositions[i].x
+		y := nodePositions[i].y
+
+		// Determine node class based on min/max level
+		nodeClass := "node-min"
+		if !isMinLevel(i) {
+			nodeClass = "node-max"
+		}
+
+		// Add highlight class if needed
+		if i == highlight {
+			nodeClass += " node-highlight"
+		}
+
+		// Draw the node
+		buf.WriteString(fmt.Sprintf("  <circle cx=\"%d\" cy=\"%d\" r=\"%d\" class=\"%s\" />\n",
+			x, y, nodeDiameter/2, nodeClass))
+
+		// Add the value text
+		buf.WriteString(fmt.Sprintf("  <text x=\"%d\" y=\"%d\" class=\"node-text\">%d</text>\n",
+			x, y, h[i]))
+
+		// Add node index for all nodes as a reference
+		fontSize := 10
+		if nodeDiameter < 30 {
+			fontSize = 8 // Smaller font for smaller nodes
+		}
+
+		buf.WriteString(fmt.Sprintf("  <text x=\"%d\" y=\"%d\" dy=\"%d\" class=\"node-index\" font-size=\"%d\">[%d]</text>\n",
+			x, y, -nodeDiameter/2-2, fontSize, i))
+	}
+
+	// If we limited the display, add a note
+	if maxLevelsToShow < levels {
+		buf.WriteString(fmt.Sprintf("  <text x=\"%d\" y=\"%d\" class=\"legend\">Note: Only showing %d of %d levels. Total nodes: %d</text>\n",
+			totalWidth/2, totalHeight-20, maxLevelsToShow, levels, h.Len()))
+	}
+
+	// End the SVG
+	buf.WriteString("</svg>")
+
+	return buf.String()
 }
 
 func TestInit0(t *testing.T) {
