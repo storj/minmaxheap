@@ -172,9 +172,8 @@ func Remove(h Interface, i int) interface{} {
 	n := h.Len() - 1
 	if n != i {
 		h.Swap(i, n)
-		if !down(h, i, n) {
-			up(h, i)
-		}
+		up(h, i)
+		down(h, i, n)
 	}
 	return h.Pop()
 }
@@ -185,7 +184,6 @@ func Remove(h Interface, i int) interface{} {
 // followed by a Push of the new value.
 // The complexity is O(log n) where n = h.Len().
 func Fix(h Interface, i int) {
-	if !down(h, i, h.Len()) {
-		up(h, i)
-	}
+	up(h, i)
+	down(h, i, h.Len())
 }
