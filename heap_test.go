@@ -590,7 +590,7 @@ func BenchmarkDup(b *testing.B) {
 	}
 }
 
-func TestFix(t *testing.T) {
+func TestFix0(t *testing.T) {
 	rng := newTestRand(t)
 
 	h := new(myHeap)
@@ -617,5 +617,21 @@ func TestFix(t *testing.T) {
 		}
 		Fix(h, elem)
 		h.verify(t, 0)
+	}
+}
+
+func TestFix1(t *testing.T) {
+	h := new(myHeap)
+
+	for i := 0; i < 100; i++ {
+		Push(h, 100-i)
+		h.verify(t, 0)
+	}
+	(*h)[48] = -1
+	Fix(h, 48)
+	h.verify(t, 0)
+	got := Pop(h).(int)
+	if got != -1 {
+		t.Fatalf("expected -1 as minimum, got %d", got)
 	}
 }
