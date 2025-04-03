@@ -73,33 +73,34 @@ func (h myHeap) verify(t *testing.T, i int) {
 	n := h.Len()
 	l := 2*i + 1
 	r := 2*i + 2
-	if l < n {
-		if isMinLevel(i) {
-			if h.Less(l, i) {
-				t.Errorf("heap invariant violated [%d] = %d > [%d] = %d", i, h[i], l, h[l])
-				return
-			}
-		} else {
-			if h.Less(i, l) {
-				t.Errorf("heap invariant violated [%d] = %d > [%d] = %d", l, h[l], i, h[i])
-				return
-			}
-		}
-		h.verify(t, l)
+	childrenAndGrandchildren := []int{
+		l,       // left child
+		r,       // right child
+		2*l + 1, // left child of left child
+		2*l + 2, // right child of left child
+		2*r + 1, // left child of right child
+		2*r + 2, // right child of right child
 	}
-	if r < n {
+
+	for cNum, descendant := range childrenAndGrandchildren {
+		if descendant >= n {
+			continue
+		}
 		if isMinLevel(i) {
-			if h.Less(r, i) {
-				t.Errorf("heap invariant violated [%d] = %d > [%d] = %d", i, h[i], r, h[r])
-				return
+			if h.Less(descendant, i) {
+				filename := h.Format(t, i)
+				t.Fatalf("heap invariant violated [%d] = %d >= [%d] = %d\n  SVG rendering of tree can be found at %s", i, h[i], descendant, h[descendant], filename)
 			}
 		} else {
-			if h.Less(i, r) {
-				t.Errorf("heap invariant violated [%d] = %d > [%d] = %d", r, h[r], i, h[i])
-				return
+			if h.Less(i, descendant) {
+				filename := h.Format(t, descendant)
+				t.Fatalf("heap invariant violated [%d] = %d >= [%d] = %d\n  SVG rendering of tree can be found at %s", descendant, h[descendant], i, h[i], filename)
 			}
 		}
-		h.verify(t, r)
+		if cNum < 2 {
+			// only recurse to immediate children
+			h.verify(t, descendant)
+		}
 	}
 }
 
